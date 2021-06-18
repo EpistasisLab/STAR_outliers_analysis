@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import pdb
 from functools import reduce
+from scipy.stats import pearsonr
+from matplotlib import pyplot as plt
 
 from step1a_library import is_field
 from step1a_library import binarize_categoricals
@@ -130,7 +132,7 @@ del fasting_time["74-0.0"]
 other_times = ["74-19.0", "74-20.0", "74-21.0", "74-22.0", "74-23.0"]
 other_times += ["74-24.0", "74-25.0", "74-26.0", "74-27.0", "74-28.0"] 
 other_times += ["74-29.0", "74-30.0", "74-36.0", "74-40.0", "74-48.0"]
-fasting_time["74-18.0"] += np.sum(fasting_time[other_times], axis = 1)
+fasting_time["74-18.0"] += np.sum(fasting_time[other_times].to_numpy(), axis = 1)
 for time in other_times: del fasting_time[time]
 center_IDs = binarize_categoricals(covariates_df[["eid", "54-0.0"]])
 batch_effects = binarize_categoricals(covariates_df[["eid", "22000-0.0"]], False, False)
@@ -150,16 +152,63 @@ PCs_df.index = age.index
 other_cov = [age, gender, age_by_gender, fasting_time, center_IDs, batch_effects, months, PCs_df]
 all_cov = reduce(innerjoin, other_cov)
 
-X = all_cov[all_cov.columns[all_cov.columns != "eid"]].to_numpy()
-X = np.concatenate([X, np.ones((len(X), 1))], axis = 1)
-pdb.set_trace()
-XtX = np.matmul(X.T, X)
-XtX_inv = np.linalg.inv(XtX)
-y_coef = np.matmul(XtX_inv, X.T)
+names = features_df.columns
+names = [name.split("-")[0] for name in names]
+real_names = ['eid', 'Cholesterol', 'HDL cholesterol', 'Triglycerides', 'Creatinine (enzymatic) in urine']
+real_names += ['Sodium in urine', 'Albumin', 'Alkaline phosphatase', 'Alanine aminotransferase']
+real_names += ['Apolipoprotein B', 'Aspartate aminotransferase', 'Urea', 'Calcium']
+real_names += ['C-reactive protein', 'Cystatin C', 'Gamma glutamyltransferase', 'Glucose']
+real_names += ['Glycated haemoglobin (HbA1c)', 'IGF-1', 'Phosphate', 'SHBG']
+real_names += ['Total protein', 'Urate', 'Vitamin D', 'Microalbumin in urine']
+real_names += ['Potassium in urine', 'Apolipoprotein A', 'Direct bilirubin', 'Creatinine']
+real_names += ['LDL direct', 'Lipoprotein A', 'Oestradiol', 'Rheumatoid factor'] 
+real_names += ['Total bilirubin', 'Testosterone']
+features_df.columns = real_names
+features_df = features_df[np.sort(real_names)]
+names = features_df.columns[features_df.columns != "eid"]
+
+X = all_cov[all_cov.columns[all_cov.columns != "eid"]].to_numpy(dtype = float)
 y_set = features_df[features_df.columns[features_df.columns != "eid"]].to_numpy().T
-#for y in y_set: 
-#    XtX_inv 
+r2 = []
+residual_sets = []
+if not os.path.exists("adjusted_data"):
+    os.mkdir("adjusted_data")
+if not os.path.exists("adjusted_data_plots"):
+    os.mkdir("adjusted_data_plots")
+for i, y in enumerate(y_set): 
+
+    X2 = (X - np.mean(X, axis = 0))/np.std(X, axis = 0)
+    X2 = X2[np.isnan(y) == False]
+    X2 = np.concatenate([X2, np.ones((len(X2), 1))], axis = 1).astype(float)
+    y2 = y[np.isnan(y) == False]
+    y2 = np.log(y2)
+    y2 = (y2 - np.mean(y2))/np.std(y2)
+    XtX = np.matmul(X2.T, X2) + np.eye(len(X2[0]))*1E-6
+    XtX_inv = np.linalg.inv(XtX)
+    y_coef = np.matmul(XtX_inv, X2.T)
     
+    W = np.matmul(y_coef, y2)
+    y_est = np.matmul(X2, W)
+    r = pearsonr(y2, y_est)[0]
+    r2.append(r**2)
+    residuals = pd.DataFrame(y2 - y_est)
+    path = "adjusted_data/" + names[i] + ".txt"
+    residuals.to_csv(path, sep = "\t", header = False, index = False)
+
+    B1x = (y_est - np.mean(y_est))
+    B1y = (y2 - np.mean(y2))
+    B1 = np.sum(B1x*B1y)/np.sum(B1x*B1x)
+    B0 = np.mean(y2) - B1*np.mean(y_est)
+    est_y2 = B0 + B1*y_est
+    plt.plot(y_est, y2, '*', label = "data vs estimate (R^2 = " + str(r**2) + ")")
+    plt.plot(y_est, est_y2, '-', label = "best fit line")
+    plt.legend()
+    plt.xlabel(names[i] + " estimate")
+    plt.ylabel(names[i] + " value")
+    plt.savefig("adjusted_data_plots/" + names[i] + ".png")
+    plt.clf()
+
+pdb.set_trace()
 # TODO: check for indexing issues. 
 
 eid_filters_folder = "eid_filters"
