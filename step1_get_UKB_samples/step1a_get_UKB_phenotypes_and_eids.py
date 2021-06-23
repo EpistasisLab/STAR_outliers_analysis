@@ -32,6 +32,10 @@ from step1a_library import binarize_categoricals
 # ethnicity by gender indicators: derived
 
 # eid, whiteness, and anomalous heterozygosity, as determined by the UKB.
+
+def innerjoin(df1, df2): return(df1.merge(df2, how = "inner", on = "eid"))
+def outerjoin(df1, df2): return(df1.merge(df2, how = "outer", on = "eid"))
+
 metadata = ["22006", "22027"]
 
 features = ["30500", "30510", "30520", "30530"]
@@ -146,8 +150,7 @@ months =  binarize_categoricals(dates[["eid", "month"]])
 month_names = months.columns[months.columns != "eid"]
 for col in month_names: months[col] *= (is_other == False).to_numpy()
 months["other"] = is_other.to_numpy()
-# month of assessment indicators (and a single indicator for all of 2006 and August through October of 2010): 55
-def innerjoin(df1, df2): return(df1.merge(df2, how = "inner", on = "eid")) 
+# month of assessment indicators (and a single indicator for all of 2006 and August through October of 2010): 55 
 PCs_df.index = age.index
 other_cov = [age, gender, age_by_gender, fasting_time, center_IDs, batch_effects, months, PCs_df]
 all_cov = reduce(innerjoin, other_cov)
@@ -168,20 +171,22 @@ features_df = features_df[np.sort(real_names)]
 names = features_df.columns[features_df.columns != "eid"]
 
 X = all_cov[all_cov.columns[all_cov.columns != "eid"]].to_numpy(dtype = float)
-y_set = features_df[features_df.columns[features_df.columns != "eid"]].to_numpy().T
 r2 = []
-residual_sets = []
+y_sets = []
 if not os.path.exists("adjusted_data"):
     os.mkdir("adjusted_data")
 if not os.path.exists("adjusted_data_plots"):
     os.mkdir("adjusted_data_plots")
-for i, y in enumerate(y_set): 
+for i, name in enumerate(names): 
 
+    y_df = features_df.loc[:, ["eid", name]]
+    y = y_df[name].to_numpy()
+    not_missing = (np.isnan(y) == False)
+    
     X2 = (X - np.mean(X, axis = 0))/np.std(X, axis = 0)
-    X2 = X2[np.isnan(y) == False]
+    X2 = X2[not_missing]
     X2 = np.concatenate([X2, np.ones((len(X2), 1))], axis = 1).astype(float)
-    y2 = y[np.isnan(y) == False]
-    y2 = np.log(y2)
+    y2 = np.log(y[not_missing])
     y2 = (y2 - np.mean(y2))/np.std(y2)
     XtX = np.matmul(X2.T, X2) + np.eye(len(X2[0]))*1E-6
     XtX_inv = np.linalg.inv(XtX)
@@ -191,9 +196,15 @@ for i, y in enumerate(y_set):
     y_est = np.matmul(X2, W)
     r = pearsonr(y2, y_est)[0]
     r2.append(r**2)
-    residuals = pd.DataFrame(y2 - y_est)
+    residuals = y2 - y_est
     path = "adjusted_data/" + names[i] + ".txt"
-    residuals.to_csv(path, sep = "\t", header = False, index = False)
+    y_df = y_df.loc[not_missing, :]
+    test_value = pearsonr(np.log(y_df[name]), residuals)[0]**2 + r**2
+    if np.round(test_value, 3) != 1:
+        print("exiting: variance accounted for by y_pred and residuals did not sum to 1")
+        exit()
+    y_df[name] = residuals
+    y_sets.append(y_df)
 
     B1x = (y_est - np.mean(y_est))
     B1y = (y2 - np.mean(y2))
@@ -208,44 +219,8 @@ for i, y in enumerate(y_set):
     plt.savefig("adjusted_data_plots/" + names[i] + ".png")
     plt.clf()
 
-pdb.set_trace()
-# TODO: check for indexing issues. 
+adjusted_data = reduce(outerjoin, y_sets).sort_values(by = "eid")
+adjusted_data.to_csv("adjusted_UKB_data.txt", sep = "\t", header = True, index = False)
 
-eid_filters_folder = "eid_filters"
-filtered_output_folder = "filtered_output"
-data_folder = "/project/UKB_moore/UKB_50978/genotype/penn_freeze_11132019"
-chromosomes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13"]
-chromosomes += ["14", "15", "16", "17", "18", "19", "20", "21", "22", "MT", "X", "XY", "Y"]
-if not os.path.exists(filtered_output_folder):
-    os.mkdir(filtered_output_folder)
-if not os.path.exists(eid_filters_folder):
-    os.mkdir(eid_filters_folder)
-output_file_names_file = open("../step2_remove_quitters_and_get_SNP_cutoffs/step2.0_output_file_names.txt", 'w')
-for i in chromosomes:
-
-    # makes the common part of the data filtering shell script
-    filter_file_template = "#!/bin/bash\n"        
-    filter_file_template += "#BSUB -J " + eid_filters_folder + "/get_UKB_samples_chr" + i + "\n" 
-    filter_file_template += "#BSUB -o " + eid_filters_folder + "/get_UKB_samples_chr" + i + ".out\n" 
-    filter_file_template += "#BSUB -e " + eid_filters_folder + "/get_UKB_samples_chr" + i + ".err\n\n" 
-    filter_file_template += "module load python/3.8\n" 
-    filter_file_template += "module load plink/1.90Beta\n\n"
-
-    # opens the data filtering shell script for the ith chromosome plink file
-    filter_path = eid_filters_folder + "/get_UKB_samples_chr" + i + ".sh"
-
-    filter_file = open(filter_path, 'w')
-
-    # writes the data filtering shell script for the ith chromosome plink file
-    data_path_prefix = data_folder + "/ukb_snp_chr" + i + "_v2"
-    filter_file_content = filter_file_template + "plink --bfile " + data_path_prefix 
-    filter_file_content += " --keep eids.tab --make-bed --out " 
-    filter_file_content += filtered_output_folder  + "/UKB_samples_chr" + i 
-    filter_file.write(filter_file_content)
-    filter_file.close()
-
-    # adds a filtered output file name to the list of such names for merging (excuding the first file)
-    if i != "1":
-        output_file_names_file.write("../step1_get_UKB_samples/" + filtered_output_folder  + "/UKB_samples_chr" + i + "\n")
-output_file_names_file.close()
-    
+adjusted_data[["eid", "eid"]].to_csv("eids.tab", sep = "\t", header = False, index = False)    
+adjusted_data[["eid"]].to_csv("eids_imputed.tab", sep = "\t", header = False, index = False)  

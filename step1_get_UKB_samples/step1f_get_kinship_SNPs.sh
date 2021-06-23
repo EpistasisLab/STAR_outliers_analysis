@@ -1,0 +1,31 @@
+#!/bin/bash
+#BSUB -J step1f_get_kinship_SNPs
+#BSUB -o step1f_get_kinship_SNPs.out
+#BSUB -e step1f_get_kinship_SNPs.err
+
+bsub < kinship_eid_filters/get_UKB_samples_chr1.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr2.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr3.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr4.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr5.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr6.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr7.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr8.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr9.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr10.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr11.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr12.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr13.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr14.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr15.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr16.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr17.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr18.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr19.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr20.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr21.sh
+bsub < kinship_eid_filters/get_UKB_samples_chr22.sh
+bsub < kinship_eid_filters/get_UKB_samples_chrMT.sh
+bsub < kinship_eid_filters/get_UKB_samples_chrX.sh
+bsub < kinship_eid_filters/get_UKB_samples_chrXY.sh
+bsub < kinship_eid_filters/get_UKB_samples_chrY.sh
