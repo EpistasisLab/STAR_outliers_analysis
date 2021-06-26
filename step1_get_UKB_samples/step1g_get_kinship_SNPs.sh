@@ -1,7 +1,7 @@
 #!/bin/bash
-#BSUB -J step1f_get_kinship_SNPs
-#BSUB -o step1f_get_kinship_SNPs.out
-#BSUB -e step1f_get_kinship_SNPs.err
+#BSUB -J step1g_get_kinship_SNPs
+#BSUB -o step1g_get_kinship_SNPs.out
+#BSUB -e step1g_get_kinship_SNPs.err
 
 bsub < kinship_eid_filters/get_UKB_samples_chr1.sh
 bsub < kinship_eid_filters/get_UKB_samples_chr2.sh

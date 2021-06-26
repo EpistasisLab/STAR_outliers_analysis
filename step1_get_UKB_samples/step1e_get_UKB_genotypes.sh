@@ -1,7 +1,7 @@
 #!/bin/bash
-#BSUB -J step1d_get_UKB_genotypes
-#BSUB -o step1d_get_UKB_genotypes.out
-#BSUB -e step1d_get_UKB_genotypes.err
+#BSUB -J step1e_get_UKB_genotypes
+#BSUB -o step1e_get_UKB_genotypes.out
+#BSUB -e step1e_get_UKB_genotypes.err
 
 bsub < eid_filters/get_UKB_imputed_samples_chr1.sh
 bsub < eid_filters/get_UKB_imputed_samples_chr2.sh

@@ -3,7 +3,10 @@ import pandas as pd
 import os
 import pdb
 from functools import reduce
+from copy import deepcopy as COPY
+from scipy.stats import yeojohnson as yj
 from scipy.stats import pearsonr
+
 from matplotlib import pyplot as plt
 
 from step1a_library import is_field
@@ -35,6 +38,22 @@ from step1a_library import binarize_categoricals
 
 def innerjoin(df1, df2): return(df1.merge(df2, how = "inner", on = "eid"))
 def outerjoin(df1, df2): return(df1.merge(df2, how = "outer", on = "eid"))
+
+def IQR_remover(df):
+    eids = df.loc[:, "eid"].to_numpy()
+    names = df.columns
+    mat = df.to_numpy()
+    q25, q75 = np.nanpercentile(mat, [25, 75], axis = 0)
+    IQR = q75 - q25
+    lb = q25 - 1.5*IQR
+    ub = q75 + 1.5*IQR
+    mat[np.logical_or(mat < lb, mat > ub)] = np.nan
+    df = pd.DataFrame(mat)
+    df.columns = names
+    df["eid"] = eids
+    return(df)
+
+
 
 metadata = ["22006", "22027"]
 
@@ -154,6 +173,7 @@ months["other"] = is_other.to_numpy()
 PCs_df.index = age.index
 other_cov = [age, gender, age_by_gender, fasting_time, center_IDs, batch_effects, months, PCs_df]
 all_cov = reduce(innerjoin, other_cov)
+all_cov.to_csv("all_covariates.txt", sep = "\t", header = False, index = False)
 
 names = features_df.columns
 names = [name.split("-")[0] for name in names]
@@ -168,59 +188,26 @@ real_names += ['LDL direct', 'Lipoprotein A', 'Oestradiol', 'Rheumatoid factor']
 real_names += ['Total bilirubin', 'Testosterone']
 features_df.columns = real_names
 features_df = features_df[np.sort(real_names)]
-names = features_df.columns[features_df.columns != "eid"]
+features_log_df = np.log(features_df.loc[:, :])
+features_log_df["eid"] = features_df.loc[:, "eid"]
+features_yj_df = COPY(features_df.loc[:, :])
+for name in real_names: 
+    mu = np.nanmean(features_df[name])
+    sigma = np.nanstd(features_df[name])
+    x = features_df[name].dropna()
+    is_val = (np.isnan(features_df[name]) == False)
+    features_yj_df.loc[is_val, name] = yj((x - mu)/sigma)[0]
+features_yj_df["eid"] = features_df.loc[:, "eid"]
+features_df_IQR = IQR_remover(COPY(features_df))
+features_log_df_IQR = IQR_remover(COPY(features_log_df))
+features_yj_df_IQR = IQR_remover(COPY(features_yj_df))
 
-X = all_cov[all_cov.columns[all_cov.columns != "eid"]].to_numpy(dtype = float)
-r2 = []
-y_sets = []
-if not os.path.exists("adjusted_data"):
-    os.mkdir("adjusted_data")
-if not os.path.exists("adjusted_data_plots"):
-    os.mkdir("adjusted_data_plots")
-for i, name in enumerate(names): 
+features_df.to_csv("UKB_features.txt", sep = "\t", header = True, index = False)
+features_log_df.to_csv("UKB_features_log.txt", sep = "\t", header = True, index = False)
+features_yj_df.to_csv("UKB_features_yj.txt", sep = "\t", header = True, index = False)
+features_df_IQR.to_csv("UKB_features_IQR.txt", sep = "\t", header = True, index = False)
+features_log_df_IQR.to_csv("UKB_features_log_IQR.txt", sep = "\t", header = True, index = False)
+features_yj_df_IQR.to_csv("UKB_features_yj_IQR.txt", sep = "\t", header = True, index = False)
 
-    y_df = features_df.loc[:, ["eid", name]]
-    y = y_df[name].to_numpy()
-    not_missing = (np.isnan(y) == False)
-    
-    X2 = (X - np.mean(X, axis = 0))/np.std(X, axis = 0)
-    X2 = X2[not_missing]
-    X2 = np.concatenate([X2, np.ones((len(X2), 1))], axis = 1).astype(float)
-    y2 = np.log(y[not_missing])
-    y2 = (y2 - np.mean(y2))/np.std(y2)
-    XtX = np.matmul(X2.T, X2) + np.eye(len(X2[0]))*1E-6
-    XtX_inv = np.linalg.inv(XtX)
-    y_coef = np.matmul(XtX_inv, X2.T)
-    
-    W = np.matmul(y_coef, y2)
-    y_est = np.matmul(X2, W)
-    r = pearsonr(y2, y_est)[0]
-    r2.append(r**2)
-    residuals = y2 - y_est
-    path = "adjusted_data/" + names[i] + ".txt"
-    y_df = y_df.loc[not_missing, :]
-    test_value = pearsonr(np.log(y_df[name]), residuals)[0]**2 + r**2
-    if np.round(test_value, 3) != 1:
-        print("exiting: variance accounted for by y_pred and residuals did not sum to 1")
-        exit()
-    y_df[name] = residuals
-    y_sets.append(y_df)
-
-    B1x = (y_est - np.mean(y_est))
-    B1y = (y2 - np.mean(y2))
-    B1 = np.sum(B1x*B1y)/np.sum(B1x*B1x)
-    B0 = np.mean(y2) - B1*np.mean(y_est)
-    est_y2 = B0 + B1*y_est
-    plt.plot(y_est, y2, '*', label = "data vs estimate (R^2 = " + str(r**2) + ")")
-    plt.plot(y_est, est_y2, '-', label = "best fit line")
-    plt.legend()
-    plt.xlabel(names[i] + " estimate")
-    plt.ylabel(names[i] + " value")
-    plt.savefig("adjusted_data_plots/" + names[i] + ".png")
-    plt.clf()
-
-adjusted_data = reduce(outerjoin, y_sets).sort_values(by = "eid")
-adjusted_data.to_csv("adjusted_UKB_data.txt", sep = "\t", header = True, index = False)
-
-adjusted_data[["eid", "eid"]].to_csv("eids.tab", sep = "\t", header = False, index = False)    
-adjusted_data[["eid"]].to_csv("eids_imputed.tab", sep = "\t", header = False, index = False)  
+features_df[["eid", "eid"]].to_csv("eids.tab", sep = "\t", header = False, index = False)    
+features_df[["eid"]].to_csv("eids_imputed.tab", sep = "\t", header = False, index = False)  

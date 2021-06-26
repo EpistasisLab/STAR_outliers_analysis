@@ -36,3 +36,12 @@ plink --memory 15000 --exclude UKB_samples-merge.missnp --bfile ../step1_get_UKB
 # makes genotype files for kinship analysis
 plink --memory 15000 --bfile ../step1_get_UKB_samples/kinship_filtered_output/UKB_samples_chr1 --merge-list step2.0_kinship_output_file_names.txt --remove people_who_quit.txt --make-bed --out kinship_UKB_samples
 
+# produces data to check for low quality SNPs. 
+plink --memory 15000 --bfile kinship_UKB_samples --freq --out kinship_UKB_samples
+plink --memory 15000 --bfile kinship_UKB_samples --missing --out kinship_UKB_samples
+plink --memory 15000 --bfile kinship_UKB_samples --hardy --out kinship_UKB_samples
+
+
+
+
+
